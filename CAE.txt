@@ -1,0 +1,337 @@
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+import seaborn as sb
+
+#B
+
+rawMortalitate = pd.read_csv('dataIN/Mortalitate.csv', index_col = 0)
+rawCoduri = pd.read_csv('dataIN/CoduriTariExtins.csv', index_col = 0)
+labels = rawMortalitate.columns.values
+
+merged = rawCoduri.merge(rawMortalitate, left_index=True, right_index=True)
+merged.fillna(np.mean(merged[labels], axis=0), inplace=True)
+
+#B1 - Variantele componentelor principale
+
+x = StandardScaler().fit_transform(merged[labels])
+
+pca = PCA()
+C = pca.fit_transform(x)
+alpha = pca.explained_variance_
+print(alpha)
+
+#B2 - Scorurile asociate instantelor
+
+scores = C / np.sqrt(alpha)
+pd.DataFrame(data = scores, index= rawMortalitate.index.values, columns=['c' + str(i+1) for i in range(C.shape[1])]).to_csv('dataOUT/scoruri.csv')
+
+#B3 - Graficul scorurilor in primele doua axe principale
+
+plt.figure(figsize=(12, 12))
+plt.title('Scoruri')
+plt.scatter(scores[:, 0], scores[:, 1])
+plt.show()
+
+
+#B4 - Tabelul variantelor componentelor principale
+
+#La fel ca la B1
+# x = StandardScaler().fit_transform(merged[labels])
+#
+# pca = PCA()
+# C = pca.fit_transform(x)
+# alpha = pca.explained_variance_
+pve = pca.explained_variance_ratio_
+
+var_cum = np.cumsum(alpha)
+pve_cum = np.cumsum(pve)
+pd.DataFrame(data={'Varianta componentelor': alpha,
+                    'Varianta cumulata': var_cum,
+                    'Procentul de varianta explicata': pve,
+                    'Procentul cumulat': pve_cum}).to_csv('dataOUT/Varianta.csv')
+
+#B5 - Plotul de varianta cu marcarea grafica a criteriilor de selectie a componentelor semnificative
+
+plt.figure(figsize=(10, 10))
+plt.title('Varianta explicata de catre componente')
+labels = ['C' + str(i + 1) for i in range(len(alpha))]
+plt.plot(labels, alpha, 'bo-')
+plt.axhline(1, c='r')
+plt.show()
+
+#B6 - Corelograma corelatiilor dintre variabilele observate si componentele pricnipale
+
+a = pca.components_.T
+Rxc = a * np.sqrt(alpha)
+communalities = np.cumsum(Rxc * Rxc, axis=1)
+communalities_df = pd.DataFrame(data=communalities, index=labels, columns=['C' + str(i + 1) for i in range(communalities.shape[1])])
+
+plt.figure(figsize=(10, 10))
+plt.title('Corelograma corelatilor')
+sb.heatmap(communalities_df, vmin=-1, vmax=1, annot=True, cmap='bwr')
+plt.show()
+
+#B7 - Variance - covariance matrix citit dintr-un fisier standardizat
+
+rawData = pd.read_csv('dataIN/Mortalitate.csv', index_col=0)
+labels = list(rawData.columns.values)
+rows = list(rawData.index.values)
+
+x = StandardScaler().fit_transform(rawData)
+
+cov = np.cov(x, rowvar=False)
+pd.DataFrame(np.round(cov, 2), index=labels, columns=labels).to_csv('dataOUT/StdCov.csv')
+
+#B8 - Determinarea componentei principale
+
+#La fel ca la B1
+# pca = PCA()
+# C = pca.fit_transform(x)
+pd.DataFrame(np.round(C, 2), index=rows, columns=['C' + str(i+1) for i in range(C.shape[1])]).to_csv('dataOUT/PrinComp.csv')
+
+#B9 - Matricea incarcarilor factoriale
+
+#La fel ca la B6
+# a = pca.components_.T
+# Rxc = a * np.sqrt(alpha)
+
+plt.figure(figsize=(8, 8))
+plt.title('Factor loadings')
+T = [t for t in np.arange(0, np.pi * 2, 0.01)]
+X = [np.cos(t) for t in T]
+Y = [np.sin(t) for t in T]
+plt.plot(X, Y)
+plt.axhline(0, c='g')
+plt.axvline(0, c='g')
+plt.scatter(Rxc[:, 0], Rxc[:, 1])
+plt.show()
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+from scipy.cluster.hierarchy import dendrogram, fcluster, linkage
+from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import StandardScaler
+
+#B
+
+rawAlcohol = pd.read_csv('dataIN/alcohol.csv', index_col=0)
+rawCoduri = pd.read_csv('dataIN/CoduriTariExtins.csv', index_col=0)
+labels = list(rawAlcohol.columns[1:].values)
+
+merged = rawAlcohol.merge(rawCoduri, left_index=True, right_index=True).drop(columns='Code')[['Continent']+labels]
+merged.fillna(np.mean(merged[labels], axis = 0), inplace = True)
+
+#Cerinte posibile
+#B1 - Matricea ierarhie
+
+x = StandardScaler().fit_transform(merged[labels])
+
+HCA = linkage(x, method='ward')
+print(HCA)
+
+#B2 - Graficul dednograma pentru partitia optima
+
+n = HCA.shape[0]
+dist_1 = HCA[1:n, 2]
+dist_2 = HCA[0:n-1, 2]
+diff = dist_1 - dist_2
+j = np.argmax(diff)
+t = (HCA[j, 2]+HCA[j+1, 2])/2
+
+plt.figure(figsize=(12,12))
+plt.title('Dendograma partitie optima')
+dendrogram(HCA, leaf_rotation= 30, labels = merged.index.values)
+plt.axhline(t, c='r')
+plt.show()
+
+#B3 - Componenta partitiei optime
+
+cat = fcluster(HCA, n-j, criterion='maxclust')
+clusters = ['C'+ str(i) for i in cat]
+
+merged['Clusters'] = clusters
+merged['Clusters'].to_csv('dataOUT/popt.csv')
+
+#B4 - Componenta partitiei din 5 clusteri
+
+cat2 = fcluster(HCA, 5, criterion= 'maxclust')
+clusters2 = ['C'+ str(i) for i in cat2]
+
+merged['Clusters2'] = clusters2
+merged['Clusters2'].to_csv('dataOUT/cluster5.csv')
+
+#B5 - Plotul partitiei din 5 clusteri(folosim PCA)
+
+pca = PCA()
+C = pca.fit_transform(x)
+
+kmeans = KMeans(n_clusters=5, n_init=10)
+kmeans_labels = kmeans.fit_predict(C)
+plt.figure(figsize=(8, 6))
+plt.scatter(C[:, 0], C[:, 1], c=kmeans_labels, cmap='viridis')
+plt.title("K-means Clustering on PCA Data")
+plt.show()
+
+#B6 - Salvarea matricei standardizate
+
+# rawHealth = pd.read_csv('./dataIN/DataSet_34.csv', index_col=0)
+# x = StandardScaler().fit_transform(rawHealth)
+# pd.DataFrame(x, columns=rawHealth.columns.values).to_csv('./dataOUT/Xstd.csv')
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sb
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis
+from sklearn.model_selection import train_test_split
+
+ind = pd.read_csv('./dataIN/Industrie.csv', index_col=0)
+pop = pd.read_csv('./dataIN/PopulatieLocalitati.csv', index_col=0)
+labels = list(ind.columns[1:].values)
+
+merged = ind.merge(right=pop, right_index=True, left_index=True) \
+.drop(columns='Localitate_y') \
+.rename(columns={'Localitate_x' : 'Localitate'})[['Judet', 'Localitate', 'Populatie'] + labels]
+merged.fillna(np.mean(merged[labels], axis=0), inplace=True)
+
+# B1 - Sa se aplice analiza liniara discriminanta si sa se calculeze scorurile discriminante. Se salveaza in fisiereul z
+x = pd.read_csv('./dataIN/ProiectB.csv', index_col=0)
+tinta = 'VULNERAB' # the column that we need to predict
+labels = list(x.columns.values[:-1]) # rest of the columns
+
+# map the letter to numbers
+dict = {'A': 1, 'B': 2, 'C': 3, 'D': 4, 'E': 5, 'F': 6, 'G': 7}
+x[tinta] = x[tinta].map(dict)
+
+# function takes as a first argument the data set without the target,
+# the 2nd argument is only the column that we need to predict
+# splits the datasets into 2 sets that each split into another 2,
+# one for training and one for testing,
+# into one with everything without the target, and one with only the target
+x_train, x_test, y_train, y_test = train_test_split(x[labels], x[tinta], train_size=0.4)
+model = LinearDiscriminantAnalysis()
+model.fit(x_train, y_train) # trains the model
+scores = model.transform(x_train) # only gives the scores
+
+pd.DataFrame(data=scores) \
+.to_csv('./dataOUT/z.csv')
+
+# B2 - Graficul scorurilor discriminante
+plt.figure(figsize=(12, 12))
+plt.title('Scoruri')
+sb.kdeplot(scores, fill=True)
+plt.show()
+
+# B3 - Sa se efectueze schimbarile atat in fisierele de invatare-testare cat si in cel de aplicare si sa se salveze in fisiere
+x_apply = pd.read_csv('./dataIN/ProiectB_apply.csv', index_col=0)
+
+prediction_test = model.predict(x_test) # predict on the dataset for testing
+prediction_applied = model.predict(x_apply) # predict on the extra dataset given to us
+
+pd.DataFrame(data=prediction_test) \
+.to_csv('./dataOUT/predict_test.csv')
+pd.DataFrame(data=prediction_applied) \
+.to_csv('./dataOUT/predict_apply.csv')
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+import numpy as np
+import pandas as pd
+from sklearn.cross_decomposition import CCA
+from sklearn.preprocessing import StandardScaler
+
+rawEmmi = pd.read_csv('./dataIN/emmissions.csv', index_col=0)
+rawCodes = pd.read_csv('./dataIN/PopulatieEuropa.csv', index_col=0)
+labels = list(rawEmmi.columns[1:].values)
+
+merged = rawCodes.merge(rawEmmi[labels], left_index=True, right_index=True)
+merged.fillna(np.mean(merged[labels], axis=0), inplace=True)
+
+# B1 - Scorurile canonice pentru cele doua seturi si salvarea lor in fisiere
+# I don't want to generate another dataset, so I just split the original one
+labels1 = labels[:4]
+labels2 = labels[4:]
+x = StandardScaler().fit_transform(merged[labels1])
+y = StandardScaler().fit_transform(merged[labels2])
+
+p = x.shape[1]
+q = y.shape[1]
+m = min(p, q)
+cca = CCA(n_components=m)
+z, u = cca.fit_transform(x, y)
+
+zlabels = ['Z' + str(i + 1) for i in range(z.shape[1])]
+ulabels = ['U' + str(i + 1) for i in range(u.shape[1])]
+pd.DataFrame(z, index=merged.index.values, columns=zlabels).to_csv('./dataOUT/z.csv')
+pd.DataFrame(u, index=merged.index.values, columns=ulabels).to_csv('./dataOUT/u.csv')
+
+# B2 - Calculul corelatiilor canonice si salvarea lor in fisier
+r = []
+for i in range(m):
+    r.append(np.corrcoef(z[:, i], u[:, i], rowvar=False)[0, 1])
+
+pd.DataFrame(r).to_csv('./dataOUT/r.csv')
+
+# B3 - Bartlett
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+import numpy as np
+from factor_analyzer import FactorAnalyzer, calculate_kmo
+
+x = np.ndarray() # standardized
+
+kmo = calculate_kmo(x) # kmo[1] needs to be > 0.6
+
+efa = FactorAnalyzer(n_factors=x.shape[1] - 1) # n_factors needs to be no. columns - 1
+scores = efa.fit_transform(x)
+factorLoadings = efa.loadings_
+eigenvalues = efa.get_eigenvalues()
+communalities = efa.get_communalities()
+specificFactors = efa.get_uniquenesses()
+
+----------------------------------------------------------------------------------------------------------------------------------------------
+
+#A-uri
+
+#Sa se salveze in fisier tarile in care RS este mai mica decat 0
+
+merged[merged['RS'] < 0] \
+.to_csv('./dataOUT/cerinta1.csv')
+
+#Sa se salveze in fisier tarile in care RS este mai mica decat rata medie a rs global in ordine desc
+
+merged[merged['RS'] < np.average(merged['RS'])][['Country', 'RS']] \
+.sort_values('RS', ascending=False) \
+.to_csv('./dataOUT/Cerinta1.csv')
+
+#Calculul mediei consumului pe cei 5 ani pt fiecare tara. Rez va fi afisat in ord desc a mediei consumului. Se va afisa codul tarii denumire si media consumului.
+
+.apply(lambda row: np.average(row[labels]), axis=1) \
+.sort_values(ascending=False) \
+.to_csv('./dataOUT/Cerinta1.csv')
+
+#Calculul mediei oe 5 ani pt fiecare tara. Se va salva fiecare tara codul si media
+
+merged \
+.apply(lambda row: np.average(row[labels]), axis=1) \
+.to_csv('./dataOUT/Cerinta1.csv')
+
+#Salvarea in fisier a anului in care s a inregistrat cea mai mare valoare media a consumului la nivel de continent. Se va salva continental si anul.
+
+merged[['Continent'] + labels] \
+.groupby('Continent') \
+.mean() \
+.idxmax(axis=1) \
+.to_csv('./dataOUT/Cerinta2.csv')
+
+
