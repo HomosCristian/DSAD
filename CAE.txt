@@ -335,3 +335,27 @@ merged[['Continent'] + labels] \
 .to_csv('./dataOUT/Cerinta2.csv')
 
 
+---------------------------------------
+
+X = date_caen.iloc[:, 1:].values # folosim doar variabilele numerice pentru analiza factoriala
+#1. KMO - 2,3 linii, kmo_all primul
+kmo_all, kmo_model = calculate_kmo(X)
+print("Indecsi KMO pentru fiecare variabila:")
+print(kmo_all)
+print(f"Indicex KMO total: {kmo_model}")
+
+#2. scoruri factoriale - 3 linii
+fa = FactorAnalyzer(n_factors=2, rotation=None)
+fa.fit(X)
+factor_scores = fa.transform(X)
+df_factors = pd.DataFrame(factor_scores, columns=["Factor1", "Factor2"]) #creare df
+df_factors.to_csv("f.csv", index=False)
+
+#3. grafic scoruri (la fel ca la PCA)
+plt.figure(figsize=(8, 6))
+plt.scatter(factor_scores[:, 0], factor_scores[:, 1], alpha=0.7)
+plt.xlabel("Factor 1")
+plt.ylabel("Factor 2")
+plt.title("Scorurile Factoriale pentru Primii Doi Factori")
+plt.grid()
+plt.show()
